@@ -88,18 +88,11 @@ namespace Grapevine.Server
 
             options.CloneEventHandlers(this);
             Host = options.Host;
+            Logger = options.Logger;
             Port = options.Port;
             PublicFolders = options.PublicFolders;
             Router = options.Router;
-            Logger = options.Logger;
             UseHttps = options.UseHttps;
-
-            /* Obsolete */
-            Connections = options.Connections;
-            OnBeforeStart = options.OnBeforeStart;
-            OnAfterStart = options.OnAfterStart;
-            OnBeforeStop = options.OnBeforeStop;
-            OnAfterStop = options.OnAfterStop;
 
             Advanced = new AdvancedRestServer(Listener);
             Listener.IgnoreWriteExceptions = true;
@@ -296,9 +289,9 @@ namespace Grapevine.Server
             }
         }
 
-        public IRestServer LogToConsole(LogLevel level = LogLevel.Trace)
+        public IRestServer LogToConsole()
         {
-            Logger = new ConsoleLogger(level);
+            Logger = new ConsoleLogger();
             return this;
         }
 

@@ -53,7 +53,8 @@ namespace Grapevine.Server
         public PublicFolder(string path, string prefix)
         {
             DirectoryList = new ConcurrentDictionary<string, string>();
-            FolderPath = Path.GetFullPath(path);
+
+            FolderPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, path);
             Prefix = prefix;
 
             Watcher = new FileSystemWatcher
@@ -147,10 +148,10 @@ namespace Grapevine.Server
                         return;
                     }
                 }
-
-                context.Response.ContentType = ContentType.DEFAULT.FromExtension(filepath);
-                context.Response.SendResponse(new FileStream(filepath, FileMode.Open));
-            }
+				
+	            ContentType contentType = ContentType.TEXT;
+	            context.Response.SendResponse(new FileStream(filepath, FileMode.Open), contentType.FromExtension(filepath));
+			}
 
             if (!string.IsNullOrEmpty(Prefix) && context.Request.PathInfo.StartsWith(Prefix) && !context.WasRespondedTo)
             {
@@ -171,7 +172,7 @@ namespace Grapevine.Server
         {
             DirectoryList[CreateDirectoryListKey(fullPath)] = fullPath;
             if (fullPath.EndsWith($"\\{_indexFileName}"))
-                DirectoryList[CreateDirectoryListKey(fullPath.Replace($"\\{_indexFileName}", ""))] = fullPath;
+                DirectoryList[CreateDirectoryListKey(fullPath.Replace($"{_indexFileName}", ""))] = fullPath;
         }
 
         protected void RemoveFromDirectoryList(string fullPath)

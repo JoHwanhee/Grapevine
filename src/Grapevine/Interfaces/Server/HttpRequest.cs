@@ -6,6 +6,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Grapevine.Shared;
 using System.IO;
+using System.Web;
 
 namespace Grapevine.Interfaces.Server
 {
@@ -221,13 +222,35 @@ namespace Grapevine.Interfaces.Server
             Name = $"{HttpMethod} {PathInfo}";
             Id = Guid.NewGuid().Truncate();
             Advanced = new AdvancedHttpRequest(request);
+
+            ContentEncoding = request.ContentEncoding;
+            if (request?.ContentType != null)
+            {
+                if (request.ContentType.Contains("text/html") && !request.ContentType.Contains("charset"))
+                {
+                    ContentEncoding = Encoding.UTF8;
+                }
+            }
+            
+            try
+            {
+                int index = request?.RawUrl?.IndexOf("?") ?? -1;
+                if (index >= 0)
+                {
+                    QueryString = HttpUtility.ParseQueryString(Request.RawUrl.Substring(index+1), ContentEncoding);
+                }
+            }
+            catch
+            {
+                QueryString = request.QueryString;
+            }
         }
 
         public string[] AcceptTypes => Request.AcceptTypes;
 
         public int ClientCertificateError => Request.ClientCertificateError;
 
-        public Encoding ContentEncoding => Request.ContentEncoding;
+        public Encoding ContentEncoding { get; }
 
         public long ContentLength64 => Request.ContentLength64;
 
@@ -282,7 +305,7 @@ namespace Grapevine.Interfaces.Server
             get
             {
                 if (_payload != null) return _payload;
-                using (var reader = new StreamReader(Request.InputStream, Request.ContentEncoding))
+                using (var reader = new StreamReader(Request.InputStream, ContentEncoding))
                 {
                     _payload = reader.ReadToEnd();
                 }
@@ -292,7 +315,7 @@ namespace Grapevine.Interfaces.Server
 
         public Version ProtocolVersion => Request.ProtocolVersion;
 
-        public NameValueCollection QueryString => Request.QueryString;
+        public NameValueCollection QueryString { get; private set; }
 
         public string RawUrl => Request.RawUrl;
 

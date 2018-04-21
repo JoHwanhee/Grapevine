@@ -271,14 +271,27 @@ namespace Grapevine.Server
 
         public IList<IRoute> ScanAssembly(Assembly assembly, string basePath)
         {
+            if (assembly == null) throw new ArgumentNullException(nameof(assembly));
+
             var routes = new List<IRoute>();
 
             Logger.Trace($"Generating routes for assembly {assembly.GetName().Name}");
 
-            foreach (var type in assembly.GetTypes().Where(t => t.IsRestResource()).OrderBy(m => m.Name))
+            try
             {
-                if (IsExcluded(type) || !IsIncluded(type)) continue;
-                routes.AddRange(ScanType(type, basePath));
+                foreach (var type in assembly.GetTypes().Where(t => t.IsRestResource()).OrderBy(m => m.Name))
+                {
+                    if (IsExcluded(type) || !IsIncluded(type)) continue;
+                    routes.AddRange(ScanType(type, basePath));
+                }
+
+            } catch(ReflectionTypeLoadException e)
+            {
+                foreach (var type in e.Types.Where(t=> t != null).Where(t => t.IsRestResource()).OrderBy(m => m.Name))
+                {
+                    if (IsExcluded(type) || !IsIncluded(type)) continue;
+                    routes.AddRange(ScanType(type, basePath));
+                }
             }
 
             return routes;

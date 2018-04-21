@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using Grapevine.Shared;
+using NLog;
 using HttpStatusCode = Grapevine.Shared.HttpStatusCode;
 
 namespace Grapevine.Interfaces.Server
@@ -129,15 +130,7 @@ namespace Grapevine.Interfaces.Server
 
     public class HttpResponse : IHttpResponse
     {
-        private static readonly string Server;
-        public static bool SuppressServerHeader { get; set; }
-
-        static HttpResponse()
-        {
-            var assembly = AppDomain.CurrentDomain.GetAssemblies().SingleOrDefault(a => a.GetName().Name == "Grapevine");
-            if (assembly != null) Server = $"{assembly.GetName().Name}/{assembly.GetName().Version}";
-        }
-
+        private static readonly Logger _logger = LogManager.GetCurrentClassLogger();
         private ContentType _contentType;
         private bool _parsedContentType;
 
@@ -164,7 +157,7 @@ namespace Grapevine.Interfaces.Server
         internal HttpResponse(HttpListenerResponse response, NameValueCollection requestHeaders)
         {
             Response = response;
-            Response.ContentEncoding = Encoding.ASCII;
+            Response.ContentEncoding = Encoding.UTF8;
             RequestHeaders = requestHeaders;
             
             ResponseSent = false;
@@ -291,8 +284,6 @@ namespace Grapevine.Interfaces.Server
 
         public void SendResponse(byte[] contents)
         {
-            if (Server != null && !SuppressServerHeader) Headers["Server"] = Server;
-
             if (RequestHeaders.AllKeys.Contains("Accept-Encoding") && RequestHeaders["Accept-Encoding"].Contains("gzip") && contents.Length > 1024)
             {
                 using (var ms = new MemoryStream())
@@ -306,21 +297,25 @@ namespace Grapevine.Interfaces.Server
                 Response.Headers["Content-Encoding"] = "gzip";
             }
 
+            Response.ContentLength64 = contents.Length;
             try
             {
-                Response.ContentLength64 = contents.Length;
                 Response.OutputStream.Write(contents, 0, contents.Length);
+            }
+            catch(Exception ex)
+            {
+                _logger.Error(ex, "Exception Response.OutputStream.Write");
+
+            }
+            try
+            {
                 Response.OutputStream.Close();
             }
-            catch
+            catch(Exception ex)
             {
-                Response.OutputStream.Dispose();
-                throw;
+                _logger.Error(ex, "Exception Response.OutputStream.Close");
             }
-            finally
-            {
-                Advanced.Close();
-            }
+            Advanced.Close();
         }
     }
 

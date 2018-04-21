@@ -33,8 +33,6 @@ namespace Grapevine.Server
         /// </summary>
         HttpMethod HttpMethod { get; }
 
-        IRoute MatchOn(string header, Regex pattern);
-
         /// <summary>
         /// Gets a unique name for function that will be invoked in the route, internally assigned
         /// </summary>
@@ -71,8 +69,6 @@ namespace Grapevine.Server
         /// The pattern keys specified in the PathInfo
         /// </summary>
         protected readonly List<string> PatternKeys;
-
-        protected internal readonly Dictionary<string, Regex> MatchesOn;
 
         public string Description { get; set; }
         public bool Enabled { get; set; }
@@ -171,7 +167,6 @@ namespace Grapevine.Server
             PathInfo = !string.IsNullOrWhiteSpace(pathInfo) ? pathInfo : string.Empty;
             PatternKeys = PatternParser.GeneratePatternKeys(PathInfo);
             PathInfoPattern = PatternParser.GenerateRegEx(PathInfo);
-            MatchesOn = new Dictionary<string, Regex>();
         }
 
         public IHttpContext Invoke(IHttpContext context)
@@ -183,23 +178,7 @@ namespace Grapevine.Server
 
         public bool Matches(IHttpContext context)
         {
-            if (!HttpMethod.IsEquivalent(context.Request.HttpMethod) || !PathInfoPattern.IsMatch(context.Request.PathInfo)) return false;
-
-            var headers = context.Request.Headers;
-            foreach (var condition in MatchesOn)
-            {
-                var value = headers.Get(condition.Key) ?? string.Empty;
-                if (condition.Value.IsMatch(value)) continue;
-                return false;
-            }
-
-            return true;
-        }
-
-        public IRoute MatchOn(string header, Regex pattern)
-        {
-            MatchesOn[header] = pattern;
-            return this;
+            return HttpMethod.IsEquivalent(context.Request.HttpMethod) && PathInfoPattern.IsMatch(context.Request.PathInfo);
         }
 
         public override bool Equals(object obj)

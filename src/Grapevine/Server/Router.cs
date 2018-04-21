@@ -2,7 +2,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
 using System.Reflection;
 using Grapevine.Exceptions.Server;
 using Grapevine.Interfaces.Server;
@@ -10,7 +9,6 @@ using Grapevine.Interfaces.Shared;
 using Grapevine.Server.Attributes;
 using Grapevine.Shared;
 using Grapevine.Shared.Loggers;
-using HttpStatusCode = Grapevine.Shared.HttpStatusCode;
 
 namespace Grapevine.Server
 {
@@ -59,11 +57,6 @@ namespace Grapevine.Server
         /// Gets or sets a value to indicate whether request routing should continue even after a response has been sent.
         /// </summary>
         bool ContinueRoutingAfterResponseSent { get; set; }
-
-        /// <summary>
-        /// Gets or sets a value to indicate whether exception text, where available, should be sent in http responses
-        /// </summary>
-        bool SendExceptionMessages { get; set; }
 
         /// <summary>
         /// Scan the assembly for routes based on inclusion and exclusion rules
@@ -313,12 +306,12 @@ namespace Grapevine.Server
         #endregion
 
         protected internal readonly IList<IRoute> RegisteredRoutes;
+        protected internal ConcurrentDictionary<string, IList<IRoute>> RouteCache;
 
         public event RoutingEventHandler AfterRouting;
         public event RoutingEventHandler BeforeRouting;
 
         public bool ContinueRoutingAfterResponseSent { get; set; }
-        public bool SendExceptionMessages { get; set; } = true;
         public string Scope { get; }
         public IRouteScanner Scanner { get; protected internal set; }
         public IList<IRoute> RoutingTable => RegisteredRoutes.ToList().AsReadOnly();
@@ -329,6 +322,7 @@ namespace Grapevine.Server
         public Router()
         {
             RegisteredRoutes = new List<IRoute>();
+            RouteCache = new ConcurrentDictionary<string, IList<IRoute>>();
             Logger = NullLogger.GetInstance();
             Scanner = new RouteScanner();
             Scope = string.Empty;
@@ -554,11 +548,19 @@ namespace Grapevine.Server
 
                 if (context.WasRespondedTo) return;
 
-                var status = (context.Response.StatusCode == HttpStatusCode.Ok) ? HttpStatusCode.InternalServerError : context.Response.StatusCode;
-                if (e is NotFoundException) status = HttpStatusCode.NotFound;
-                if (e is NotImplementedException) status = HttpStatusCode.NotImplemented;
+                if (e is NotFoundException)
+                {
+                    context.Response.SendResponse(HttpStatusCode.NotFound, e.Message);
+                    return;
+                }
 
-                context.Response.TrySendResponse(Logger, status, SendExceptionMessages ? e : null);
+                if (e is NotImplementedException)
+                {
+                    context.Response.SendResponse(HttpStatusCode.NotImplemented, e.Message);
+                    return;
+                }
+
+                context.Response.SendResponse(HttpStatusCode.InternalServerError, e);
             }
         }
 
@@ -576,20 +578,14 @@ namespace Grapevine.Server
 
                 foreach (var route in routing.Where(route => route.Enabled))
                 {
-                    if (context.WasRespondedTo && !ContinueRoutingAfterResponseSent) break;
-
                     routeCounter++;
                     route.Invoke(context);
 
                     Logger.RouteInvoked($"{context.Request.Id} - {routeCounter}/{totalRoutes} {route.Name}");
+
+                    if (ContinueRoutingAfterResponseSent) continue;
+                    if (context.WasRespondedTo) break;
                 }
-            }
-            catch (HttpListenerException e)
-            {
-                var msg = e.NativeErrorCode == 64
-                    ? "Connection aborted by client"
-                    : "An error occured while attempting to respond to the request";
-                Logger.Error(msg, e);
             }
             finally
             {
@@ -602,7 +598,8 @@ namespace Grapevine.Server
 
         public IList<IRoute> RoutesFor(IHttpContext context)
         {
-            return RegisteredRoutes.Where(r => r.Matches(context) && r.Enabled).ToList();
+            var key = $"{context.Request.HttpMethod}:{context.Request.PathInfo}";
+            return RouteCache.GetOrAdd(key, RegisteredRoutes.Where(r => r.Matches(context) && r.Enabled).ToList());
         }
 
         /// <summary>
@@ -637,6 +634,7 @@ namespace Grapevine.Server
         {
             if (route.Function == null) throw new ArgumentNullException(nameof(route));
             if (!RegisteredRoutes.Contains(route)) RegisteredRoutes.Add(route);
+            if (!RouteCache.IsEmpty) RouteCache.Clear();
         }
 
         /// <summary>
